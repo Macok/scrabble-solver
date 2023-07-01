@@ -8,9 +8,6 @@ class Square:
     # default behavior is blank square, no score modifier, all cross-checks valid
     def __init__(self, letter=None, modifier="Normal", sentinel=1):
         self.letter = letter
-        self.cross_checks_0 = [sentinel] * 26
-        self.cross_checks_1 = [sentinel] * 26
-        self.cross_checks = self.cross_checks_0
         self.modifier = modifier
         self.visible = True
         if sentinel == 0:
@@ -23,13 +20,6 @@ class Square:
             return "_"
         else:
             return self.letter
-
-    # maintain two separate cross-check lists depending on if the board is transpose or not
-    def check_switch(self, is_transpose):
-        if is_transpose:
-            self.cross_checks = self.cross_checks_1
-        else:
-            self.cross_checks = self.cross_checks_0
 
 
 class ScrabbleBoard:
@@ -122,9 +112,6 @@ class ScrabbleBoard:
         self.best_row = 0
         self.best_col = 0
 
-        # store squares that need updated cross-checks
-        self.upper_cross_check = []
-        self.lower_cross_check = []
 
     # transpose method that modifies self.board inplace
     def _transpose(self):
@@ -234,7 +221,6 @@ class ScrabbleBoard:
 
     def _extend_right(self, start_node, square_row, square_col, rack, word, squares, dist_from_anchor):
         square = self.board[square_row][square_col]
-        square.check_switch(self.is_transpose)
 
         # execute if square is empty
         if not square.letter:
@@ -275,11 +261,10 @@ class ScrabbleBoard:
     def _left_part(self, start_node, anchor_square_row, anchor_square_col, rack, word, squares, limit,
                    dist_from_anchor):
         potential_square = self.board[anchor_square_row][anchor_square_col - dist_from_anchor]
-        potential_square.check_switch(self.is_transpose)
         if potential_square.letter:
             return
         self._extend_right(start_node, anchor_square_row, anchor_square_col, rack, word, squares, dist_from_anchor)
-        if 0 in potential_square.cross_checks:
+        if not potential_square.visible:
             return
         if limit > 0:
             for letter in start_node.children:
@@ -331,48 +316,16 @@ class ScrabbleBoard:
             # the one we're trying to insert. If not, insertion fails, undo any previous insertions
             if curr_square_letter:
                 if curr_square_letter == letter:
-                    if row > 0:
-                        self.upper_cross_check.append((self.board[row - 1][curr_col], letter, row, curr_col))
-                    if row < 15:
-                        self.lower_cross_check.append((self.board[row + 1][curr_col], letter, row, curr_col))
-
                     curr_col += 1
                 else:
-                    print(f'Failed to insert letter "{letter}" of "{word}" at column {curr_col + 1}, '
-                          f'row {row + 1}. Square is occupied by letter "{curr_square_letter}"')
-                    self.upper_cross_check = []
-                    self.lower_cross_check = []
-                    for _ in range(i):
-                        curr_col -= 1
-                        self.board[row][curr_col].letter = None
-                        self.board[row][curr_col].modifier = modifiers.pop()
-                    return
+                    raise Exception(f"Failed to inserd word {word} at {row},{col}")
             else:
                 self.board[row][curr_col].letter = letter
 
                 # reset any modifiers to 0 once they have a tile placed on top of them
                 self.board[row][curr_col].modifier = ""
 
-                # once letter is inserted, add squares above and below it to cross_check_queue
-                if row > 0:
-                    self.upper_cross_check.append((self.board[row - 1][curr_col], letter, row, curr_col))
-                if row < 15:
-                    self.lower_cross_check.append((self.board[row + 1][curr_col], letter, row, curr_col))
-
                 curr_col += 1
-
-        # place 0 cross-check sentinel at the beginning and end of inserted words to stop accidental overlap.
-        # sentinels should only be for the board state opposite from the one the board is currently in
-        if curr_col < 15:
-            if self.is_transpose:
-                self.board[self.best_row][curr_col].cross_checks_0 = [0] * 26
-            else:
-                self.board[self.best_row][curr_col].cross_checks_1 = [0] * 26
-        if col - 1 > - 1:
-            if self.is_transpose:
-                self.board[self.best_row][col - 1].cross_checks_0 = [0] * 26
-            else:
-                self.board[self.best_row][col - 1].cross_checks_1 = [0] * 26
 
         self.words_on_board.append(word)
 
@@ -389,8 +342,7 @@ class ScrabbleBoard:
         for i, letter in enumerate(rack):
             # Only allow anchor square with trivial cross-checks
             potential_square = self.board[square_row][square_col - 1]
-            potential_square.check_switch(self.is_transpose)
-            if 0 in potential_square.cross_checks or potential_square.letter:
+            if not potential_square.visible or potential_square.letter:
                 continue
             temp_rack = rack[:i] + rack[i + 1:]
             self.board[square_row][square_col - 1].letter = letter
@@ -475,6 +427,8 @@ class ScrabbleBoard:
             self.processing_row=7
             self.processing_col=8
             self._left_part(self.dawg_root, 7, 8, temp_rack, "", [], 6, 1)
+
+        self.all_moves = sorted(self.all_moves, key=lambda m:m[3], reverse=True)
 
         # reset anchor square spot to blank after trying all combinations
         self.board[7][8].letter = None
@@ -607,7 +561,19 @@ if __name__ == "__main__":
         scores.append(play_game())
 
     print(sum(scores) / runs)
-# avg 710.833
+
+
+if __name__ == "__main__123":
+    to_load = open("lexicon/scrabble_words_complete.pickle", "rb")
+    with open("lexicon/scrabble_words_complete.pickle", "rb") as f:
+        root = pickle.load(f)
+    game = ScrabbleBoard(root)
+    game.get_start_move(["Q", "X", "R"])
+    if not game.all_moves:
+        print("No move found")
+    for move in game.all_moves[:15]:
+        print(move)
+    game.print_board()
 
 
 if __name__ == "__main__123":
@@ -635,8 +601,7 @@ if __name__ == "__main__123":
     game.get_best_move(["X"])
     if not game.all_moves:
         print("No move found")
-    for move in game.all_moves:
+    for move in game.all_moves[:15]:
         print(move)
 
-
-    print('\n'.join(''.join(str(x) for x in row) for row in game.board))
+    game.print_board()
