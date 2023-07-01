@@ -550,11 +550,13 @@ state = """
 """
 
 
-if __name__ == "__main__123":
-    play_game()
-
-
 if __name__ == "__main__":
+    while True:
+        score = play_game()
+        print(f"score: {score}")
+
+
+if __name__ == "__main__123":
     scores = []
     runs = 150
     for _ in range(runs):
